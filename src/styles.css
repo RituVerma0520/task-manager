@@ -1,0 +1,42 @@
+:root {
+  font-family: "DM Sans", system-ui, sans-serif;
+  color: #173a34;
+  background: #f7f7f0;
+  line-height: 1.5;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 48rem; margin: auto; padding: clamp(1rem, 6vw, 4rem) 1rem; }
+h1, h2, dd { font-family: "DM Serif Text", Georgia, serif; font-weight: 500; }
+h1 { font-size: clamp(2.5rem, 7vw, 4.5rem); letter-spacing: -.05em; margin: 0 0 1rem; }
+h2 { font-size: 2rem; margin: 0 0 .8rem; }
+dl { display: grid; grid-template-columns: repeat(3, 1fr); border-block: 1px solid #acb8ad; margin: 0 0 2rem; }
+dl div { padding: 1rem .5rem; }
+dt { color: #465c52; font-size: .875rem; }
+dd { margin: 0; font-size: 2rem; }
+form { margin-bottom: 2.2rem; }
+form label { display: block; margin-bottom: .4rem; font-weight: 650; }
+.entry, .filters, li, .task { display: flex; align-items: center; gap: .5rem; }
+button, input { font: inherit; }
+button, .entry input { border: 1px solid #86978c; border-radius: .5rem; padding: .55rem .85rem; min-height: 44px; }
+button { background: #fff; color: inherit; cursor: pointer; }
+button:hover { border-color: #173a34; }
+.add, [aria-pressed="true"] { background: #195747; color: white; }
+.entry input { min-width: 0; flex: 1; }
+:focus-visible { outline: 3px solid #216da3; outline-offset: 2px; }
+[role="alert"], .delete { color: #833329; }
+.filters { flex-wrap: wrap; }
+.empty, ul { margin: 1rem 0; background: white; border: 1px solid #c6cfc6; border-radius: .75rem; }
+.empty { padding: 2.5rem 1rem; text-align: center; }
+ul { padding: 0; list-style: none; }
+li { padding: .8rem; justify-content: space-between; }
+li + li { border-top: 1px solid #d9ded7; }
+.task { min-width: 0; min-height: 44px; cursor: pointer; }
+.task input { accent-color: #195747; width: 1.2rem; height: 1.2rem; flex: none; }
+.task span { min-width: 0; overflow-wrap: anywhere; }
+.task input:checked + span { text-decoration: line-through; color: #53655d; }
+@media (max-width: 360px) {
+  .entry { align-items: stretch; flex-direction: column; }
+  .filters { gap: .25rem; }
+  .filters button { padding-inline: .65rem; }
+}
