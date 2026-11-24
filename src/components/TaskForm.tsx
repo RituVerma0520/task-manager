@@ -1,15 +1,22 @@
 import { useRef, useState, type FormEvent } from 'react'
 
-export default function TaskForm({ onAdd }: { onAdd: (name: string) => void }) {
+interface Props {
+  validateName: (name: string) => string
+  onAdd: (name: string) => void
+}
+
+export default function TaskForm({ validateName, onAdd }: Props) {
   const [name, setName] = useState('')
-  const [invalid, setInvalid] = useState(false)
+  const [showValidation, setShowValidation] = useState(false)
+  const error = showValidation ? validateName(name) : ''
   const input = useRef<HTMLInputElement>(null)
 
   function submit(event: FormEvent) {
     event.preventDefault()
     const trimmed = name.trim()
-    setInvalid(!trimmed)
-    if (trimmed) {
+    const message = validateName(trimmed)
+    setShowValidation(Boolean(message))
+    if (!message) {
       onAdd(trimmed)
       setName('')
     }
@@ -21,11 +28,11 @@ export default function TaskForm({ onAdd }: { onAdd: (name: string) => void }) {
       <label htmlFor="task-name">New task</label>
       <div className="entry">
         <input id="task-name" ref={input} value={name} placeholder="What needs doing?"
-          aria-invalid={invalid} aria-describedby={invalid ? 'name-error' : undefined}
-          onChange={event => { setName(event.target.value); setInvalid(false) }} />
+          aria-invalid={Boolean(error)} aria-describedby={error ? 'name-error' : undefined}
+          onChange={event => { setName(event.target.value); setShowValidation(false) }} />
         <button className="add">Add task</button>
       </div>
-      {invalid && <p role="alert" id="name-error">Enter a task name.</p>}
+      {error && <p role="alert" id="name-error">{error}</p>}
     </form>
   )
 }

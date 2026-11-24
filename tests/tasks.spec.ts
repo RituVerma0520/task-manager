@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
   await counts(page, 0, 0, 0)
 })
 
-test('validates names, trims on submit, and resets on refresh', async ({ page }) => {
+test('validates names, trims on submit, and restores on refresh', async ({ page }) => {
   const input = page.getByLabel('New task')
   for (const value of ['', '   ']) {
     await input.fill(value)
@@ -31,19 +31,20 @@ test('validates names, trims on submit, and resets on refresh', async ({ page })
   await expect(page.getByRole('alert')).toHaveCount(0)
   await counts(page, 1, 1, 0)
   await page.reload()
-  await expect(page.getByRole('checkbox')).toHaveCount(0)
-  await counts(page, 0, 0, 0)
+  await visibleNames(page, ['Review notes'])
+  await expect(page.getByRole('checkbox')).not.toBeChecked()
+  await counts(page, 1, 1, 0)
 })
 
-test('duplicate tasks toggle and delete independently across filters', async ({ page }) => {
-  const boxes = page.getByRole('checkbox', { name: 'Review', exact: true })
+test('distinct tasks toggle and delete independently across filters', async ({ page }) => {
+  const boxes = page.getByRole('checkbox')
   const button = (name: string) => page.getByRole('button', { name, exact: true })
   async function filter(name: string) {
     await button(name).click()
     await expect(button(name)).toHaveAttribute('aria-pressed', 'true')
   }
   for (const n of [1, 2]) {
-    await page.getByLabel('New task').fill('Review')
+    await page.getByLabel('New task').fill(n === 1 ? 'Review' : 'Publish')
     await button('Add task').click()
     await expect(boxes).toHaveCount(n)
     await counts(page, n, n, 0)
@@ -79,7 +80,7 @@ test('duplicate tasks toggle and delete independently across filters', async ({ 
   await counts(page, 2, 2, 0)
   await boxes.last().check()
   await counts(page, 2, 1, 1)
-  await button('Delete Review').first().click()
+  await button('Delete Review').click()
   await expect(boxes).toHaveCount(1)
   await expect(boxes).toBeChecked()
   await counts(page, 1, 0, 1)
@@ -88,7 +89,7 @@ test('duplicate tasks toggle and delete independently across filters', async ({ 
   await counts(page, 1, 0, 1)
   await filter('Completed')
   await counts(page, 1, 0, 1)
-  await button('Delete Review').click()
+  await button('Delete Publish').click()
   await expect(page.getByRole('status')).toHaveText('No tasks yet. Add your first task above.')
   await expect(boxes).toHaveCount(0)
   await counts(page, 0, 0, 0)
@@ -208,4 +209,147 @@ test('unfocused task actions leave focus at the input', async ({ page }) => {
   await expect(input).toBeFocused()
   await visibleNames(page, ['Middle'])
   await counts(page, 2, 1, 1)
+})
+
+const storageKey = 'task-manager.tasks'
+
+async function savedTasks(page: Page) {
+  return page.evaluate(key => JSON.parse(localStorage.getItem(key)!), storageKey)
+}
+
+test('rejects duplicates across filters and releases a deleted name', async ({ page }) => {
+  const input = page.getByLabel('New task')
+  await input.fill('Review notes')
+  await input.press('Enter')
+  await page.getByRole('checkbox').check()
+  await page.getByRole('button', { name: 'Pending', exact: true }).click()
+  const original = await savedTasks(page)
+  for (const duplicate of ['Review notes', '  rEVIEW NOTES  ']) {
+    await input.fill(duplicate)
+    await input.press('Enter')
+    await expect(input).toHaveAccessibleDescription('A task with this name already exists.')
+    await expect(input).toHaveAttribute('aria-invalid', 'true')
+    await expect(page.getByRole('alert')).toBeVisible()
+    await expect(input).toBeFocused()
+    await expect(input).toHaveValue(duplicate)
+    await visibleNames(page, [])
+    await counts(page, 1, 0, 1)
+    expect(await savedTasks(page)).toEqual(original)
+  }
+  await page.getByRole('button', { name: 'All', exact: true }).click()
+  await expect(page.getByRole('checkbox', { name: 'Review notes' })).toBeChecked()
+  await page.getByRole('button', { name: 'Delete Review notes' }).click()
+  await expect(page.getByRole('button', { name: 'All', exact: true })).toBeFocused()
+  await expect(input).toHaveValue('  rEVIEW NOTES  ')
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(input).toHaveAttribute('aria-invalid', 'false')
+  await expect(input).toHaveAccessibleDescription('')
+  await input.press('Enter')
+  await visibleNames(page, ['rEVIEW NOTES'])
+  await counts(page, 1, 1, 0)
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await input.fill('Review  notes')
+  await input.press('Enter')
+  await counts(page, 2, 2, 0)
+})
+
+test('restores stable IDs, order, status, and deletions', async ({ page }) => {
+  await addThree(page)
+  const original = await savedTasks(page)
+  await page.getByRole('checkbox', { name: 'Middle' }).check()
+  await page.getByRole('button', { name: 'Completed', exact: true }).click()
+  await page.reload()
+  await activeFilter(page, 'All')
+  await visibleNames(page, ['First', 'Middle', 'Last'])
+  await expect(page.getByRole('checkbox', { name: 'Middle' })).toBeChecked()
+  await counts(page, 3, 2, 1)
+  await page.getByRole('button', { name: 'Delete First' }).click()
+  expect(await savedTasks(page)).toEqual([{ ...original[1], completed: true }, original[2]])
+  await page.reload()
+  await visibleNames(page, ['Middle', 'Last'])
+  await counts(page, 2, 1, 1)
+})
+
+test('recovers from malformed and invalid collections', async ({ page }) => {
+  const valid = { id: 'a', name: 'First', completed: false }
+  for (const raw of ['{', '{}', '[null]', JSON.stringify([{ ...valid, completed: 1 }]),
+    JSON.stringify([{ ...valid, id: ' ' }]), JSON.stringify([{ ...valid, name: ' ' }]),
+    JSON.stringify([valid, { ...valid, name: 'Second' }]),
+    JSON.stringify([valid, { ...valid, id: 'b', name: ' FIRST ' }])]) {
+    await page.evaluate(([key, value]) => localStorage.setItem(key, value), [storageKey, raw])
+    await page.reload()
+    await visibleNames(page, [])
+    await counts(page, 0, 0, 0)
+  }
+  await page.getByLabel('New task').fill('Recovered')
+  await page.getByLabel('New task').press('Enter')
+  await page.reload()
+  await visibleNames(page, ['Recovered'])
+})
+
+for (const failure of ['read', 'write'] as const) {
+  test('continues in memory after storage ' + failure + ' failure', async ({ page }) => {
+    await addThree(page)
+    const observer = await page.context().newPage()
+    await observer.goto('/')
+    const original = await savedTasks(observer)
+    expect(original).toHaveLength(3)
+    await page.addInitScript(mode => {
+      if (mode === 'read') {
+        Storage.prototype.getItem = () => { throw new Error('Access denied') }
+      } else {
+        Storage.prototype.setItem = () => { throw new Error('Quota exceeded') }
+      }
+    }, failure)
+    await page.reload()
+    expect(await savedTasks(observer)).toEqual(original)
+    const restored = failure === 'write' ? 3 : 0
+    await counts(page, restored, restored, 0)
+    const warning = page.getByRole('status').filter({ hasText: 'Changes may be lost on refresh' })
+    if (failure === 'read') await expect(warning).toBeVisible()
+    const input = page.getByLabel('New task')
+    await input.fill('Session task')
+    await input.press('Enter')
+    await expect(warning).toBeVisible()
+    await expect(input).toBeFocused()
+    await page.getByRole('checkbox', { name: 'Session task' }).check()
+    await page.getByRole('button', { name: 'Completed', exact: true }).click()
+    await visibleNames(page, ['Session task'])
+    await counts(page, restored + 1, restored, 1)
+    await page.getByRole('button', { name: 'Delete Session task' }).click()
+    await counts(page, restored, restored, 0)
+    await visibleNames(page, [])
+    expect(await savedTasks(observer)).toEqual(original)
+  })
+}
+
+const unicodePairs = [
+  ['Straße', 'STRAẞE'],
+  ['Straße', 'STRASSE'],
+  ['Ος', 'οσ'],
+  ['Café', 'CAFE\u0301'],
+]
+
+test('rejects Unicode equivalents on submission', async ({ page }) => {
+  const input = page.getByLabel('New task')
+  for (const [name, equivalent] of unicodePairs) {
+    await input.fill(name)
+    await input.press('Enter')
+    await input.fill(equivalent)
+    await input.press('Enter')
+    await expect(input).toHaveAccessibleDescription('A task with this name already exists.')
+    await visibleNames(page, [name])
+    await counts(page, 1, 1, 0)
+    await page.getByRole('button', { name: 'Delete ' + name, exact: true }).click()
+  }
+})
+
+test('rejects Unicode equivalents in saved collections', async ({ page }) => {
+  for (const pair of unicodePairs) {
+    const tasks = pair.map((name, i) => ({ id: String(i), name, completed: false }))
+    await page.evaluate(([key, value]) => localStorage.setItem(key, value), [storageKey, JSON.stringify(tasks)])
+    await page.reload()
+    await visibleNames(page, [])
+    await counts(page, 0, 0, 0)
+  }
 })

@@ -2,7 +2,9 @@
 
 A browser-based task list built with React, TypeScript, Vite, and plain CSS. Add a task, use its checkbox to change its status, or delete it. The All, Pending, and Completed filters control which rows appear. The counts always cover the entire list.
 
-Tasks live in memory and reset on refresh. Each browser tab starts with an empty list.
+Task names must be unique across all filters and statuses. Comparison trims surrounding whitespace, applies Unicode NFC normalization, and uses JavaScript’s locale-independent lowercase then uppercase mappings. This matches composed and decomposed accents, Greek sigma variants, and German sharp S with SS. The displayed spelling is preserved. This is an approximation of Unicode case folding and can merge names a locale distinguishes, such as Turkish dotless ı and i. Deleting a task frees its name for reuse.
+
+Tasks are saved in localStorage for this browser and site. Refresh restores their IDs, names, order, and completion status and selects All. Missing or invalid saved data starts an empty list. If reading or saving fails, a status message appears and you can continue in memory until refresh. Clearing site data removes saved tasks. Tabs do not synchronize live, so concurrent edits in different tabs can overwrite one another.
 
 ## Run locally
 
